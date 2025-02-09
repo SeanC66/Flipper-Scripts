@@ -80,7 +80,7 @@ function Zip-WithPowerShell {
         if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
         # Compress-Archive method (PowerShell native ZIP)
-        Compress-Archive -Path "$sourceFolder\*" -DestinationPath $zipPath -Force
+        Compress-Archive -Path "$sourceFolder\*" -DestinationPath $zipPath -Force -ErrorAction Stop
 
         if (-not (Test-Path $zipPath)) {
             throw "ZIP file was not created successfully."
@@ -105,9 +105,9 @@ if (-not (Test-Path $chromePath)) {
     exit
 }
 
-# Close Chrome to avoid file locking issues
-Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 3
+# Force kill ALL Chrome-related processes (to avoid file locks)
+Get-Process | Where-Object { $_.Name -match "chrome|google" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 5
 
 # Use PowerShell native ZIP method
 Zip-WithPowerShell -sourceFolder $chromePath -zipPath $outputZip
