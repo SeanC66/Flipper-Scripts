@@ -48,7 +48,7 @@ function Upload-FileAndGetLink {
 
     try {
         # Get Gofile server
-        $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/getServer'
+        $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/Servers'
         if ($serverResponse.status -ne "ok") {
             Add-Content -Path $logFile -Value "Failed to get server URL: $($serverResponse.status)"
             return $null
