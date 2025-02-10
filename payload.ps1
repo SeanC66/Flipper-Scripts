@@ -179,4 +179,3 @@ if (Test-Path $outputZip) {
 } else {
     Add-Content -Path $logFile -Value "Output zip file not found."
 }
-
