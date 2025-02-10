@@ -43,18 +43,19 @@ function Upload-FileAndGetLink {
     # Debug log entry at the start of the function
     Add-Content -Path $logFile -Value "Starting upload for file: $filePath"
     
-    # Step 1: Get available GoFile upload server
-    Add-Content -Path $logFile -Value "Getting GoFile server..."
-    $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/servers' -Method Get
-    if (-not $serverResponse.data.server) {
-        Add-Content -Path $logFile -Value "Failed to get GoFile server: $($serverResponse.status)"
-        Send-DiscordMessage -message "Failed to get GoFile server."
-        return $null
-    }
+  # Step 1: Get available GoFile upload server
+Add-Content -Path $logFile -Value "Getting GoFile server..."
+$serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/servers' -Method Get
+if (-not $serverResponse.data.servers) {
+    Add-Content -Path $logFile -Value "Failed to get GoFile server: $($serverResponse.status)"
+    Send-DiscordMessage -message "Failed to get GoFile server."
+    return $null
+}
 
-    $uploadServer = $serverResponse.data.server
-    $uploadUri = "https://$uploadServer.gofile.io/contents/uploadfile"
-    Add-Content -Path $logFile -Value "GoFile server found: $uploadUri"
+# Select the first available server from the list
+$uploadServer = $serverResponse.data.servers[0].name
+$uploadUri = "https://$uploadServer.gofile.io/contents/uploadfile"
+Add-Content -Path $logFile -Value "GoFile server found: $uploadUri"
 
     # Step 2: Check if file exists before attempting upload
     if (-not (Test-Path $filePath)) {
