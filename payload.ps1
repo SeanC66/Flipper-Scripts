@@ -158,6 +158,12 @@ try {
         }
     }
 
+    # Handle invalid timestamps by setting a valid timestamp for all files before zipping
+    Get-ChildItem -Path $tempFolder -Recurse | ForEach-Object {
+        # Set a default timestamp to avoid issues
+        $_.LastWriteTime = (Get-Date)
+    }
+
     # Zip the copied data
     Compress-Archive -Path "$tempFolder\*" -DestinationPath $outputZip -Force
     Remove-Item -Recurse -Force $tempFolder
