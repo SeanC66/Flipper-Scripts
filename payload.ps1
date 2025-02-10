@@ -40,6 +40,9 @@ function Upload-FileAndGetLink {
         [string]$filePath
     )
 
+    # Debug log entry at the start of the function
+    Add-Content -Path $logFile -Value "Starting upload for file: $filePath"
+    
     # Step 1: Get available GoFile upload server
     Add-Content -Path $logFile -Value "Getting GoFile server..."
     $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/servers' -Method Get
@@ -159,15 +162,22 @@ try {
 }
 # After all files are copied and compressed, upload the zip file to GoFile
 if (Test-Path $outputZip) {
-    Add-Content -Path $logFile -Value "Uploading the zip file to GoFile..."
-    $uploadLink = Upload-FileAndGetLink -filePath $outputZip
-    if ($uploadLink) {
-        Add-Content -Path $logFile -Value "Upload successful. Link: $uploadLink"
-    } else {
-        Add-Content -Path $logFile -Value "Failed to upload zip file to GoFile."
-        Send-DiscordMessage -message "Failed to upload zip file."
+    Add-Content -Path $logFile -Value "Found zip file: $outputZip. Attempting to upload..."
+    
+    # Add logging to confirm function call
+    try {
+        $uploadLink = Upload-FileAndGetLink -filePath $outputZip
+        if ($uploadLink) {
+            Add-Content -Path $logFile -Value "Upload successful. Link: $uploadLink"
+            Send-DiscordMessage -message "File uploaded successfully: $uploadLink"
+        } else {
+            Add-Content -Path $logFile -Value "Failed to upload zip file to GoFile."
+            Send-DiscordMessage -message "Failed to upload zip file."
+        }
+    } catch {
+        Add-Content -Path $logFile -Value "Error during upload attempt: $_"
+        Send-DiscordMessage -message "Error during file upload."
     }
 } else {
-    Add-Content -Path $logFile -Value "Output zip file not found."
+    Add-Content -Path $logFile -Value "Output zip file not found. Skipping upload."
 }
-
