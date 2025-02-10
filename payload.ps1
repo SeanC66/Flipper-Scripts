@@ -42,32 +42,54 @@ function Send-DiscordMessage {
     }
 }
 
-# Function to upload file and get download link
+# Function to upload file and get download link from GoFile
 function Upload-FileAndGetLink {
-    param ([string]$filePath)
+    param (
+        [string]$filePath
+    )
 
+    # Step 1: Get available GoFile upload server
+    $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/servers' -Method Get
+    if (-not $serverResponse.data.server) {
+        Add-Content -Path $logFile -Value "Failed to get GoFile server: $($serverResponse.status)"
+        Send-DiscordMessage -message "Failed to get GoFile server."
+        return $null
+    }
+
+    $uploadServer = $serverResponse.data.server
+    $uploadUri = "https://$uploadServer.gofile.io/contents/uploadfile"
+
+    # Step 2: Check if file exists before attempting upload
+    if (-not (Test-Path $filePath)) {
+        Add-Content -Path $logFile -Value "File not found: $filePath"
+        Send-DiscordMessage -message "File not found for upload."
+        return $null
+    }
+
+    # Step 3: Prepare file for upload
     try {
-        # Get Gofile server
-        $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/Servers'
-        if ($serverResponse.status -ne "ok") {
-            Add-Content -Path $logFile -Value "Failed to get server URL: $($serverResponse.status)"
-            return $null
+        $fileBytes = [System.IO.File]::ReadAllBytes($filePath)
+        $fileBase64 = [System.Convert]::ToBase64String($fileBytes)
+
+        # Prepare form-data body
+        $body = @{
+            file = $fileBase64
         }
 
-        # Define upload URI
-        $uploadUri = "https://$($serverResponse.data.server).gofile.io/uploadFile"
-
-        # Upload the file
-        $response = Invoke-RestMethod -Uri $uploadUri -Method Post -InFile $filePath -ContentType "multipart/form-data"
-        if ($response.status -ne "ok") {
+        # Step 4: Upload the file
+        $response = Invoke-RestMethod -Uri $uploadUri -Method Post -Form $body
+        if ($response.status -ne "ok" -or -not $response.data.downloadPage) {
             Add-Content -Path $logFile -Value "Failed to upload file: $($response.status)"
+            Send-DiscordMessage -message "Failed to upload file to GoFile."
             return $null
         }
 
-        Add-Content -Path $logFile -Value "File uploaded successfully: $($response.data.downloadPage)"
-        return $response.data.downloadPage
+        $downloadLink = $response.data.downloadPage
+        Add-Content -Path $logFile -Value "File uploaded successfully: $downloadLink"
+        return $downloadLink
     } catch {
-        Add-Content -Path $logFile -Value "Failed to upload file: $_"
+        Add-Content -Path $logFile -Value "Error uploading file: $_"
+        Send-DiscordMessage -message "Error uploading file to GoFile."
         return $null
     }
 }
