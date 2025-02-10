@@ -68,6 +68,7 @@ function Upload-FileAndGetLink {
 
     # Step 3: Prepare file for upload
     try {
+        Add-Content -Path $logFile -Value "Reading file: $filePath"
         $fileBytes = [System.IO.File]::ReadAllBytes($filePath)
         $fileBase64 = [System.Convert]::ToBase64String($fileBytes)
 
