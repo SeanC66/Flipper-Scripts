@@ -26,6 +26,7 @@ function Send-DiscordMessage {
     $body = @{ content = $message }
 
     try {
+        Add-Content -Path $logFile -Value "Sending message to Discord: $message"
         Invoke-RestMethod -Uri $webhook -Method Post -Body ($body | ConvertTo-Json) -ContentType 'application/json'
         Add-Content -Path $logFile -Value "Message sent to Discord: $message"
     } catch {
@@ -40,6 +41,7 @@ function Upload-FileAndGetLink {
     )
 
     # Step 1: Get available GoFile upload server
+    Add-Content -Path $logFile -Value "Getting GoFile server..."
     $serverResponse = Invoke-RestMethod -Uri 'https://api.gofile.io/servers' -Method Get
     if (-not $serverResponse.data.server) {
         Add-Content -Path $logFile -Value "Failed to get GoFile server: $($serverResponse.status)"
@@ -49,6 +51,7 @@ function Upload-FileAndGetLink {
 
     $uploadServer = $serverResponse.data.server
     $uploadUri = "https://$uploadServer.gofile.io/contents/uploadfile"
+    Add-Content -Path $logFile -Value "GoFile server found: $uploadUri"
 
     # Step 2: Check if file exists before attempting upload
     if (-not (Test-Path $filePath)) {
@@ -68,6 +71,7 @@ function Upload-FileAndGetLink {
         }
 
         # Step 4: Upload the file
+        Add-Content -Path $logFile -Value "Uploading file..."
         $response = Invoke-RestMethod -Uri $uploadUri -Method Post -Form $body
         if ($response.status -ne "ok" -or -not $response.data.downloadPage) {
             Add-Content -Path $logFile -Value "Failed to upload file: $($response.status)"
@@ -77,6 +81,7 @@ function Upload-FileAndGetLink {
 
         $downloadLink = $response.data.downloadPage
         Add-Content -Path $logFile -Value "File uploaded successfully: $downloadLink"
+        Send-DiscordMessage -message "File uploaded successfully: $downloadLink"
         return $downloadLink
     } catch {
         Add-Content -Path $logFile -Value "Error uploading file: $_"
@@ -151,5 +156,18 @@ try {
     Send-DiscordMessage -message "Failed to create ZIP file."
     Add-Content -Path $logFile -Value "Failed to create ZIP file: $_"
     exit
+}
+# After all files are copied and compressed, upload the zip file to GoFile
+if (Test-Path $outputZip) {
+    Add-Content -Path $logFile -Value "Uploading the zip file to GoFile..."
+    $uploadLink = Upload-FileAndGetLink -filePath $outputZip
+    if ($uploadLink) {
+        Add-Content -Path $logFile -Value "Upload successful. Link: $uploadLink"
+    } else {
+        Add-Content -Path $logFile -Value "Failed to upload zip file to GoFile."
+        Send-DiscordMessage -message "Failed to upload zip file."
+    }
+} else {
+    Add-Content -Path $logFile -Value "Output zip file not found."
 }
 
